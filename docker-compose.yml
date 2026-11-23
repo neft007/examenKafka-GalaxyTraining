@@ -14,12 +14,15 @@ services:
     environment:
       - SPRING_DATASOURCE_URL=jdbc:postgresql://gym-db:5432/gimnasiodb
       - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=gym-kafka:29092
     secrets:
       - db_password
     networks:
       - gym-network
     depends_on:
       gym-db:
+        condition: service_healthy
+      kafka:
         condition: service_healthy
     healthcheck:
       test: ["CMD", "wget", "--spider", "-q", "http://localhost:8080/actuator/health"]

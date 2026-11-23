@@ -2,6 +2,7 @@ package pe.edu.galaxy.training.java.sdd.gimnasio.application.service;
 
 import java.time.Clock;
 
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -11,6 +12,7 @@ import pe.edu.galaxy.training.java.sdd.gimnasio.application.port.in.usecase.Rese
 import pe.edu.galaxy.training.java.sdd.gimnasio.application.port.out.ClasePersistencePort;
 import pe.edu.galaxy.training.java.sdd.gimnasio.application.port.out.ReservaPersistencePort;
 import pe.edu.galaxy.training.java.sdd.gimnasio.application.port.out.SocioPersistencePort;
+import pe.edu.galaxy.training.java.sdd.gimnasio.domain.event.ReservaConfirmadaEvent;
 import pe.edu.galaxy.training.java.sdd.gimnasio.domain.exception.AforoCompletoException;
 import pe.edu.galaxy.training.java.sdd.gimnasio.domain.exception.ClaseNotFoundException;
 import pe.edu.galaxy.training.java.sdd.gimnasio.domain.exception.ClaseYaComenzadaException;
@@ -37,13 +39,15 @@ public class ReservarPlazaService implements ReservarPlazaUseCase {
     private final ClasePersistencePort clasePersistence;
     private final ReservaPersistencePort reservaPersistence;
     private final Clock clock;
+    private final ApplicationEventPublisher eventPublisher;
 
     public ReservarPlazaService(SocioPersistencePort socioPersistence, ClasePersistencePort clasePersistence,
-                                ReservaPersistencePort reservaPersistence, Clock clock) {
+                                ReservaPersistencePort reservaPersistence, Clock clock, ApplicationEventPublisher eventPublisher) {
         this.socioPersistence = socioPersistence;
         this.clasePersistence = clasePersistence;
         this.reservaPersistence = reservaPersistence;
         this.clock = clock;
+        this.eventPublisher = eventPublisher;
     }
 
     @Override
@@ -76,6 +80,20 @@ public class ReservarPlazaService implements ReservarPlazaUseCase {
             throw new ReservaSolapadaException(command.socioId().toString(), clase.getFechaInicio().toString());
         }
 
-        return ReservaResult.from(reservaPersistence.save(Reserva.crear(socioId, claseId, clock)));
+        Reserva reserva = reservaPersistence.save(Reserva.crear(socioId, claseId, clock));
+
+        // Publicamos el evento de dominio DESPUÉS de guardar.
+        // El listener @TransactionalEventListener(AFTER_COMMIT) lo enviará a Kafka
+        // SOLO si la transacción hace commit (si falla, se descarta).
+        eventPublisher.publishEvent(ReservaConfirmadaEvent.of(
+                reserva.getId().value(),
+                socio.getId().value(),
+                clase.getId().value(),
+                socio.getEmail().value(),
+                reserva.getFechaReserva()));
+
+        return ReservaResult.from(reserva);
+        /* quito esta linea ahora kafka se encarga del return
+        return ReservaResult.from(reservaPersistence.save(Reserva.crear(socioId, claseId, clock)));*/
     }
 }
