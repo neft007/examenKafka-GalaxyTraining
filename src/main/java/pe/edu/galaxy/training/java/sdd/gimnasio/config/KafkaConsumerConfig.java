@@ -3,6 +3,8 @@ package pe.edu.galaxy.training.java.sdd.gimnasio.config;
 import java.util.HashMap;
 import java.util.Map;
 
+import io.confluent.kafka.serializers.KafkaAvroDeserializer;
+import io.confluent.kafka.serializers.KafkaAvroDeserializerConfig;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.springframework.beans.factory.annotation.Value;
@@ -12,16 +14,11 @@ import org.springframework.kafka.annotation.EnableKafka;
 import org.springframework.kafka.config.ConcurrentKafkaListenerContainerFactory;
 import org.springframework.kafka.core.ConsumerFactory;
 import org.springframework.kafka.core.DefaultKafkaConsumerFactory;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.datatype.jsr310.JavaTimeModule;
-import org.springframework.kafka.support.serializer.JsonDeserializer;
-
-import pe.edu.galaxy.training.java.sdd.gimnasio.domain.event.ReservaConfirmadaEvent;
 
 /**
- * Configuración del consumidor Kafka.
+ * Configuración del consumidor Kafka usando Avro + Schema Registry.
  * <p>
- * En Fase E se agregará aquí el DefaultErrorHandler y el retry/DLT.
+ * Mantiene @RetryableTopic + @DltHandler (son independientes del serializador).
  */
 @Configuration
 @EnableKafka
@@ -30,45 +27,28 @@ public class KafkaConsumerConfig {
     @Value("${spring.kafka.bootstrap-servers:gym-kafka:29092}")
     private String bootstrapServers;
 
-    /*@Bean
-    public ConsumerFactory<String, ReservaConfirmadaEvent> reservaConsumerFactory() {
-        Map<String, Object> props = new HashMap<>();
-        props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
-        props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
-        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, JsonDeserializer.class);
-        props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        props.put(JsonDeserializer.TRUSTED_PACKAGES, "pe.edu.galaxy.training.java.sdd.gimnasio.domain.event");
-        props.put(JsonDeserializer.USE_TYPE_INFO_HEADERS, false);
-        props.put(JsonDeserializer.VALUE_DEFAULT_TYPE, ReservaConfirmadaEvent.class.getName());
-
-        return new DefaultKafkaConsumerFactory<>(props,
-                new StringDeserializer(),
-                new JsonDeserializer<>(ReservaConfirmadaEvent.class, false));
-    }*/
+    @Value("${spring.kafka.properties.schema.registry.url:http://gym-schema-registry:8081}")
+    private String schemaRegistryUrl;
 
     @Bean
-    public ConsumerFactory<String, ReservaConfirmadaEvent> reservaConsumerFactory() {
+    public ConsumerFactory<String, Object> avroConsumerFactory() {
         Map<String, Object> props = new HashMap<>();
         props.put(ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, bootstrapServers);
         props.put(ConsumerConfig.KEY_DESERIALIZER_CLASS_CONFIG, StringDeserializer.class);
+        props.put(ConsumerConfig.VALUE_DESERIALIZER_CLASS_CONFIG, KafkaAvroDeserializer.class);
+        props.put("schema.registry.url", schemaRegistryUrl);
+        props.put(KafkaAvroDeserializerConfig.SPECIFIC_AVRO_READER_CONFIG, true);
         props.put(ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
 
-        ObjectMapper objectMapper = new ObjectMapper();
-        objectMapper.registerModule(new JavaTimeModule());
-
-        JsonDeserializer<ReservaConfirmadaEvent> deserializer =
-                new JsonDeserializer<>(ReservaConfirmadaEvent.class, objectMapper, false);
-        deserializer.addTrustedPackages("pe.edu.galaxy.training.java.sdd.gimnasio.domain.event");
-
-        return new DefaultKafkaConsumerFactory<>(props, new StringDeserializer(), deserializer);
+        return new DefaultKafkaConsumerFactory<>(props);
     }
 
     @Bean
-    public ConcurrentKafkaListenerContainerFactory<String, ReservaConfirmadaEvent> kafkaListenerContainerFactory(
-            ConsumerFactory<String, ReservaConfirmadaEvent> reservaConsumerFactory) {
-        var factory = new ConcurrentKafkaListenerContainerFactory<String, ReservaConfirmadaEvent>();
-        factory.setConsumerFactory(reservaConsumerFactory);
-        factory.setConcurrency(2); // 2 threads → consume 2 particiones en paralelo
+    public ConcurrentKafkaListenerContainerFactory<String, Object> kafkaListenerContainerFactory(
+            ConsumerFactory<String, Object> avroConsumerFactory) {
+        var factory = new ConcurrentKafkaListenerContainerFactory<String, Object>();
+        factory.setConsumerFactory(avroConsumerFactory);
+        factory.setConcurrency(2);
         return factory;
     }
 }

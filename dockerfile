@@ -15,11 +15,11 @@ RUN mvn clean package -DskipTests
 # ============================================================
 # ETAPA 2: Ejecución (Runtime)
 # ============================================================
-FROM eclipse-temurin:17-jre-alpine
+FROM eclipse-temurin:17-jre
 WORKDIR /app
 
 # Seguridad: Crear grupo y usuario sin privilegios
-RUN addgroup -S appgroup && adduser -S appuser -G appgroup
+RUN addgroup --system appgroup && adduser --system --ingroup appgroup appuser
 
 # Copiar el JAR generado desde la etapa anterior
 COPY --from=builder /app/target/*.jar app.jar

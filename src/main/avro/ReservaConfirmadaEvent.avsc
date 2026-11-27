@@ -1,0 +1,14 @@
+{
+  "type": "record",
+  "name": "ReservaConfirmadaEvent",
+  "namespace": "pe.edu.galaxy.training.java.sdd.gimnasio.domain.event.avro",
+  "fields": [
+    {"name": "eventId", "type": "string"},
+    {"name": "eventType", "type": "string"},
+    {"name": "reservaId", "type": "string"},
+    {"name": "socioId", "type": "string"},
+    {"name": "claseId", "type": "string"},
+    {"name": "socioEmail", "type": "string"},
+    {"name": "occurredAt", "type": {"type": "long", "logicalType": "timestamp-millis"}}
+  ]
+}
