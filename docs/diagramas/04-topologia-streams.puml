@@ -1,0 +1,36 @@
+@startuml topologia-streams
+!theme plain
+title Topología Kafka Streams: contador de reservas por clase (Fase F)
+
+rectangle "gym.reservas.eventos.v1\n(Avro / SpecificRecord)" as IN
+
+rectangle "KStream<String, ReservaConfirmadaEvent>" as Stream
+
+rectangle "filter(eventType == ReservaConfirmada)" as F1
+rectangle "groupBy(claseId)" as F2
+rectangle "count()\n(KTable<String, Long>)" as F3
+rectangle "toStream().mapValues(toString)" as F4
+
+rectangle "gym.reservas.contador.v1\n(String → long)" as OUT
+
+IN --> Stream
+Stream --> F1
+F1 --> F2
+F2 --> F3
+F3 --> F4
+F4 --> OUT
+
+note right of F3
+  State store: RocksDB
+  Changelog interno:
+  gym-reservas-contador-v2-KSTREAM-AGGREGATE-...-changelog
+  (recupera el estado al reiniciar)
+end note
+
+note right of F4
+  application.id = gym-reservas-contador-v2
+  processing.guarantee = EXACTLY_ONCE_V2
+  STATESTORE_CACHE_MAX_BYTES = 0 (emisión inmediata)
+end note
+
+@enduml

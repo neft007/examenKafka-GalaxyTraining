@@ -1,0 +1,45 @@
+@startuml flujo-error-dlt
+!theme plain
+title Flujo con fallo: retry exponencial + Dead Letter Topic (Fase E)
+
+actor Usuario
+participant "Frontend" as Front
+participant "Backend\n(reserva se guarda OK)" as API
+participant "Kafka\ngym.reservas.eventos.v1" as T0
+participant "ReservaNotificationConsumer\n(intento 1)" as C1
+participant "MailHog / SMTP" as MH
+participant "Kafka\ngym.reservas.eventos.v1-retry-0" as R0
+participant "Kafka\ngym.reservas.eventos.v1-retry-1" as R1
+participant "Kafka\ngym.reservas.eventos.v1-retry-2" as R2
+participant "Kafka\ngym.reservas.eventos.v1-dlt" as DLT
+participant "@DltHandler" as DH
+
+Usuario -> Front : reserva con email fail@example.com
+Front -> API : POST /reservas
+API -> T0 : evento Avro
+
+T0 -> C1 : poll
+C1 -> MH : sendEmail()
+MH --> C1 : ✗ RuntimeException
+
+note over C1 : include = RuntimeException.class
+C1 -> R0 : reintento 1\n(backoff = 2s)
+R0 -> C1 : poll
+C1 -> MH : sendEmail()
+MH --> C1 : ✗ RuntimeException
+
+C1 -> R1 : reintento 2\n(backoff = 4s)
+R1 -> C1 : poll
+C1 -> MH : sendEmail()
+MH --> C1 : ✗ RuntimeException
+
+C1 -> R2 : reintento 3\n(backoff = 8s)
+R2 -> C1 : poll
+C1 -> MH : sendEmail()
+MH --> C1 : ✗ RuntimeException
+
+C1 -> DLT : agotados los 4 intentos
+DLT -> DH : onMessage()
+DH -> DH : log.error + headers\n(kafka_dlt-exception-message\n kafka_original-topic\n kafka_original-offset)
+
+@enduml

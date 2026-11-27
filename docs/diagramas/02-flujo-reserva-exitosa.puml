@@ -1,0 +1,48 @@
+@startuml flujo-reserva-exitosa
+!theme plain
+title Flujo exitoso: reserva → correo (Fases C, D, F)
+
+actor Usuario
+participant "Frontend\n(Nginx)" as Front
+participant "ReservaController" as Ctrl
+participant "ReservarPlazaService\n(@Transactional)" as Svc
+participant "PostgreSQL" as DB
+participant "ApplicationEventPublisher" as Pub
+participant "ReservaEventListener\n(AFTER_COMMIT)" as Lst
+participant "KafkaProducerAdapter\n(Avro)" as Prod
+participant "Schema Registry" as Reg
+participant "Kafka\ngym.reservas.eventos.v1" as Kafka
+participant "ReservaNotificationConsumer" as Cons
+participant "MailHog" as MH
+
+Usuario -> Front : POST /api/v1/clases/{id}/reservas
+Front -> Ctrl : proxy
+Ctrl -> Svc : reservar(command)
+Svc -> DB : save(Reserva)
+DB --> Svc : reserva
+Svc -> Pub : publishEvent(ReservaConfirmadaEvent)
+Svc --> Ctrl : ReservaResult
+Ctrl --> Front : 201 Created
+Front --> Usuario : OK
+
+note over Svc,Pub : El servicio NO sabe de Kafka\nsolo publica un evento de dominio
+
+== Transacción confirmada ==
+
+Pub -> Lst : onReservaConfirmada(event)
+Lst -> Prod : publish(topic, key, event)
+Prod -> Prod : POJO → SpecificRecord Avro
+Prod -> Reg : registerSchema (si es nuevo)
+Reg --> Prod : schemaId
+Prod -> Kafka : ProducerRecord(key=reservaId)\n+ headers + bytes Avro
+Kafka --> Prod : ack (acks=all)
+Prod --> Lst : callback OK
+
+== Consumer en paralelo ==
+
+Kafka -> Cons : poll()
+Cons -> Cons : deserialize Avro\n(SpecificRecord)
+Cons -> Cons : Avro → ReservaConfirmadaEvent (POJO)
+Cons -> MH : SimpleMailMessage\n(SMTP :1025)
+
+@enduml

@@ -1,137 +1,247 @@
-# 🏋️ Gimnasio Reservas - API + Frontend + Docker
+# Sistema de Reservas para Gimnasio · Apache Kafka
 
-Sistema de reservas para gimnasio con API REST (Spring Boot), Frontend (React/HTML) y base de datos PostgreSQL, todo dockerizado con Docker Compose.
+Proyecto final del curso **Kafka for Java Developers** (Galaxy Training).
 
-## 🚀 Stack Tecnológico
+Sistema de reservas de gimnasio con arquitectura hexagonal (Spring Boot 4 + Java 17) y **mensajería asíncrona con Apache Kafka**. Cubre los 10 componentes de la rúbrica: arquitectura de integración, infraestructura, CLI, producer, consumer, Spring Events, error handlers (producer + consumer), integración con JavaMail y extras (Schema Registry + Avro + Kafka Streams).
 
-- **Backend:** Java 17 + Spring Boot 4.1.1
-- **Frontend:** React (o HTML/JS) servido con Nginx
-- **Base de Datos:** PostgreSQL 16 (Alpine)
-- **Caché:** Redis 7 (Alpine)
-- **Administración BD:** Adminer
-- **Contenedores:** Docker + Docker Compose
-- **Registros:** Docker Hub + GitHub Container Registry
+---
 
-## 🏗️ Arquitectura
+## 📚 Stack
 
-```text
-┌──────────────────────────────────────────────────────────────────┐
-│                     Red: gym-network (bridge)                    │
-│                                                                  │
-│  ┌──────────────┐     ┌───────────────┐     ┌──────────────┐     │
-│  │   Frontend   │────▶│      API      │────▶│  PostgreSQL  │     │
-│  │   (Nginx)    │     │ (Spring Boot) │     │     (16)     │     │
-│  │    :3000     │     │ :8080, :9090  │     │    :5432     │     │
-│  └──────────────┘     └───────┬───────┘     └──────┬───────┘     │
-│                               │                    │             │
-│                       ┌───────┴───────┐     ┌──────┴───────┐     │
-│                       │    Worker     │     │   Adminer    │     │
-│                       │ (Spring Boot) │     │   (GUI BD)   │     │
-│                       └───────────────┘     └──────────────┘     │
-│                                                                  │
-│                       ┌───────────────┐                          │
-│                       │     Redis     │                          │
-│                       │    (Caché)    │                          │
-│                       └───────────────┘                          │
-└──────────────────────────────────────────────────────────────────┘
-```
+| Capa | Tecnología |
+|------|-----------|
+| Backend | Spring Boot 4.1.1 · Java 17 · Spring Kafka · Spring Data JPA |
+| Frontend | Nginx · HTML/CSS/JS |
+| Base de datos | PostgreSQL 16 |
+| Mensajería | Apache Kafka 7.7 (KRaft) · Schema Registry (Confluent 7.7) |
+| Serialización | Avro (con schema versionado) |
+| Streaming | Kafka Streams (contador de reservas por clase) |
+| Mail | JavaMail + MailHog (SMTP local) |
+| Contenedores | Docker · Docker Compose |
+| Docs API | OpenAPI 3.0.3 · Swagger UI |
 
-## 📋 Requisitos
-
-- Docker Engine 24+
-- Docker Compose v2+
-- (Opcional) Docker Scout para escaneo de seguridad
+---
 
 ## 🚀 Cómo levantar el proyecto
 
-### 1. Clonar el repositorio
+### Requisitos
+- Docker ≥ 24 y Docker Compose ≥ 2.20
+- 4 GB de RAM libres
+
+### Pasos
 
 ```bash
-git clone https://github.com/neft007/examenDocker-GalaxyTraining.git
-cd examenDocker-GalaxyTraining
-```
+# 1. Clonar el repositorio
+git clone <URL_DEL_REPO>
+cd gimnasio-reservas_docker
 
-### 2. Crear el archivo de secreto
+# 2. Crear el archivo de password para Postgres
+cp db_password.txt.example db_password.txt
+# (el contenido por defecto es "postgres", puedes cambiarlo)
 
-```bash
-printf "GymPass2024!" > db_password.txt
-```
-
-### 3. Levantar el stack
-
-```bash
+# 3. Levantar todos los servicios
 docker compose up -d --build
-```
 
-### 4. Verificar que todo está corriendo
-
-```bash
-docker compose ps
-```
-
-Deberías ver 6 contenedores:
-
-| Contenedor     | Servicio              | Estado esperado |
-|----------------|-----------------------|-----------------|
-| `gym-db`       | PostgreSQL            | healthy         |
-| `gym-redis`    | Redis                 | running         |
-| `gym-api`      | API Spring Boot       | healthy         |
-| `gym-worker`   | Worker Spring Boot    | running         |
-| `gym-adminer`  | GUI de base de datos  | running         |
-| `gym-frontend` | Frontend Nginx        | running         |
-
-### 5. Acceder a los servicios
-
-| Servicio    | URL                                     | Descripción          |
-|-------------|-----------------------------------------|----------------------|
-| Frontend    | <http://localhost:3000>                 | Interfaz de usuario  |
-| API         | <http://localhost:8080>                 | API REST             |
-| Swagger UI  | <http://localhost:8080/swagger-ui.html> | Documentación API    |
-| Adminer     | <http://localhost:8081>                 | GUI de base de datos |
-| Healthcheck | <http://localhost:8080/actuator/health> | Estado de la API     |
-
-## 🔒 Seguridad
-
-- ✅ **Usuario no-root:** el contenedor corre como `appuser` (no root).
-- ✅ **Multi-stage build:** imagen final solo con JRE + JAR (sin Maven).
-- ✅ **Secretos:** contraseña de BD en Docker Secrets (`/run/secrets/db_password`).
-- ✅ **Red interna:** la BD no expone puertos al host.
-- ✅ **Healthchecks:** detección temprana de fallos.
-- ✅ **Docker Scout:** escaneo de vulnerabilidades.
-
-## 📦 Imágenes publicadas
-
-- **Docker Hub:** [`neft007/gym-reservas-api`](https://hub.docker.com/r/neft007/gym-reservas-api)
-- **GitHub Container Registry:** [`ghcr.io/neft007/gym-reservas-api`](https://github.com/neft007/examenDocker-GalaxyTraining/pkgs/container/gym-reservas-api)
-
-## 🧪 Comandos útiles
-
-```bash
-# Ver logs de la API
+# 4. Esperar ~60s a que la API arranque
 docker compose logs -f gym-api
-
-# Verificar comunicación entre contenedores
-docker exec -it gym-api ping -c 2 gym-db
-
-# Escanear vulnerabilidades
-docker scout quickview neft007/gym-reservas-api:latest
-
-# Bajar el stack (mantiene volúmenes)
-docker compose down
-
-# Bajar y eliminar volúmenes
-docker compose down -v
 ```
 
-## 📄 Documentación adicional
+### URLs de los servicios
 
-- Docker Cheat Sheet
-- Evidencias de sustentación
+| Servicio | URL | Credenciales |
+|----------|-----|--------------|
+| Frontend | http://localhost:3000 | — |
+| API REST | http://localhost:8080/api/v1 | — |
+| Swagger UI | http://localhost:8080/swagger-ui/index.html | — |
+| Actuator | http://localhost:8080/actuator/health | — |
+| Kafka UI | http://localhost:8090 | — |
+| Schema Registry | http://localhost:8081/subjects | — |
+| MailHog (bandeja) | http://localhost:8025 | — |
+| MailHog SMTP | localhost:1025 | — |
+| Adminer (DB) | http://localhost:8081 | server: `gym-db`, user: `postgres`, db: `gimnasiodb` |
+| PostgreSQL | localhost:5432 | user: `postgres`, password: ver `db_password.txt` |
 
-## 👤 Autor
+---
 
-**Neftalí** - [@neft007](https://github.com/neft007)
+## 🏗️ Arquitectura
 
-## 📅 Fecha
+Los diagramas completos están en [`docs/diagramas/`](docs/diagramas/) (PlantUML) y [`docs/diagramas-mermaid.md`](docs/diagramas-mermaid.md) (Mermaid renderizable en GitHub).
 
-Noviembre 2026 - Examen Final Docker & Docker Compose - Galaxy Training
+Vista general:
+
+```
+┌────────────┐   ┌──────────────────────────────────────┐   ┌─────────────────────┐
+│  Frontend  │──▶│  gym-api (Spring Boot 4)             │──▶│ PostgreSQL          │
+│  (Nginx)   │   │                                      │   └─────────────────────┘
+└────────────┘   │  Controller → Service(@Transactional)│
+                 │       │                              │
+                 │       ▼                              │
+                 │  ApplicationEventPublisher           │
+                 │       │                              │
+                 │       ▼ (AFTER_COMMIT)               │
+                 │  KafkaProducerAdapter (Avro)         │
+                 └───────────────┬──────────────────────┘
+                                 │
+                                 ▼
+                 ┌──────────────────────────────────────┐
+                 │  Apache Kafka (KRaft) + Schema Reg.  │
+                 │  · gym.reservas.eventos.v1           │
+                 │  · gym.reservas.eventos.v1-retry-0..2│
+                 │  · gym.reservas.eventos.v1-dlt       │
+                 │  · gym.reservas.contador.v1          │
+                 └───────────────┬──────────────────────┘
+                    ┌────────────┴─────────────┐
+                    ▼                          ▼
+        ┌────────────────────┐      ┌──────────────────────┐
+        │ ReservaNotification│      │ Kafka Streams        │
+        │ Consumer           │      │ (contador por clase) │
+        │ @RetryableTopic    │      └──────────────────────┘
+        │ @DltHandler        │
+        └─────────┬──────────┘
+                  ▼
+        ┌────────────────────┐
+        │ JavaMail → MailHog │
+        └────────────────────┘
+```
+
+---
+
+## ✅ Cobertura de la rúbrica
+
+| # | Componente | Dónde está implementado |
+|---|-----------|-------------------------|
+| 1 | Arquitectura de integración | [`docs/diagramas/01-arquitectura-general.puml`](docs/diagramas/01-arquitectura-general.puml) |
+| 2 | Infraestructura + Kafka UI | `docker-compose.yml` (servicios `kafka`, `kafka-ui`, `schema-registry`, `mailhog`) |
+| 3 | Kafka CLI (topics, produce, consume, 2 groups) | [`scripts/kafka-cli-demo.sh`](scripts/kafka-cli-demo.sh) |
+| 4 | Producer Avro con Key + headers | `adapter/out/messaging/KafkaProducerAdapter.java` |
+| 5 | Consumer Avro | `adapter/in/messaging/ReservaNotificationConsumer.java` |
+| 6 | Spring Events (desacople servicio ↔ producer) | `ReservarPlazaService` + `ReservaEventListener` |
+| 7 | Error handler Producer (acks, retries, idempotence, callback) | `config/KafkaAvroProducerConfig.java` + `KafkaProducerAdapter` |
+| 8 | Error handler Consumer (@RetryableTopic + @DltHandler) | `ReservaNotificationConsumer` |
+| 9 | Integración JavaMail → MailHog | `adapter/out/email/JavaMailNotificacionAdapter.java` |
+| 10 | Extras: Schema Registry + Avro + Kafka Streams | `config/KafkaAvroProducerConfig`, `src/main/avro/*.avsc`, `streams/ReservasContadorTopology` |
+
+---
+
+## 🧪 Demo rápida (para la presentación)
+
+### A) Reserva exitosa → correo en MailHog
+
+1. Abrir http://localhost:3000
+2. Registrar socio (email normal, ej. `juan@example.com`)
+3. Crear clase con fecha futura
+4. Reservar plaza
+5. Verificar:
+   - http://localhost:8025 → correo recibido
+   - http://localhost:8090/topics/gym.reservas.eventos.v1 → mensaje Avro
+   - http://localhost:8081/subjects → `gym.reservas.eventos.v1-value` (v1)
+
+### B) Fallo controlado → retry → DLT
+
+1. Registrar socio con email `fail@example.com`
+2. Reservar con ese socio
+3. Esperar ~15s (backoff 2+4+8)
+4. En Kafka UI aparecerán los tópicos `gym.reservas.eventos.v1-retry-0`, `-retry-1`, `-retry-2` y `-dlt`
+5. El `@DltHandler` imprime en logs:
+   ```
+   [DLT] Mensaje agotó reintentos. originalTopic=gym.reservas.eventos.v1
+   exception=Simulated mail failure for email: fail@example.com
+   ```
+
+### C) Contador de Kafka Streams
+
+1. Hacer 3 reservas en la **misma clase**
+2. En Kafka UI → `gym.reservas.contador.v1`
+3. Ver mensajes con `key=<claseId>` y `value=1, 2, 3`
+
+---
+
+## 🛠️ Comandos útiles
+
+### Kafka CLI
+
+```bash
+# Menú interactivo
+./scripts/kafka-cli-demo.sh
+
+# Crear topics
+./scripts/kafka-cli-topics.sh create
+
+# Producir desde archivo
+./scripts/kafka-cli-produce.sh file
+./scripts/kafka-cli-produce.sh json
+
+# Consumer grupo A (gym-notificaciones)
+./scripts/kafka-cli-consume.sh group-a
+
+# Consumer grupo B (gym-auditoria)
+./scripts/kafka-cli-consume.sh group-b
+
+# Listar grupos
+./scripts/kafka-cli-consume.sh list-groups
+```
+
+### Verificar Schema Registry
+
+```bash
+curl http://localhost:8081/subjects
+# ["gym.reservas.eventos.v1-value"]
+
+curl http://localhost:8081/subjects/gym.reservas.eventos.v1-value/versions/1 | jq .
+```
+
+### Ver la DLT
+
+```bash
+docker exec -it gym-kafka kafka-console-consumer \
+  --bootstrap-server gym-kafka:29092 \
+  --topic gym.reservas.eventos.v1-dlt \
+  --from-beginning \
+  --property print.headers=true
+```
+
+---
+
+## 📂 Estructura del proyecto
+
+```
+gimnasio-reservas_docker/
+├── docker-compose.yml
+├── Dockerfile
+├── pom.xml
+├── db_password.txt.example
+├── docs/
+│   ├── diagramas/*.puml
+│   └── diagramas-mermaid.md
+├── scripts/
+│   ├── kafka-cli-demo.sh
+│   ├── kafka-cli-topics.sh
+│   ├── kafka-cli-produce.sh
+│   ├── kafka-cli-consume.sh
+│   └── data/*.{txt,json}
+├── frontend/
+└── src/main/
+    ├── avro/ReservaConfirmadaEvent.avsc
+    ├── java/pe/edu/galaxy/training/java/sdd/gimnasio/
+    │   ├── adapter/
+    │   │   ├── in/messaging/ReservaNotificationConsumer.java
+    │   │   ├── in/web/…
+    │   │   ├── out/email/JavaMailNotificacionAdapter.java
+    │   │   ├── out/messaging/KafkaProducerAdapter.java
+    │   │   └── out/persistence/…
+    │   ├── application/…
+    │   ├── config/…
+    │   │   ├── KafkaAvroProducerConfig.java
+    │   │   ├── KafkaConsumerConfig.java
+    │   │   └── …
+    │   ├── domain/…
+    │   └── streams/ReservasContadorTopology.java
+    └── resources/application.properties
+```
+
+---
+
+## 👨‍💻 Autor
+
+**Neftali.** — Curso *Kafka for Java Developers* · Galaxy Training
+Instructor: Aristides Novoa Arbildo

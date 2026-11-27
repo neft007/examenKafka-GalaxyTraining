@@ -1,0 +1,76 @@
+@startuml arquitectura-general
+!theme plain
+skinparam componentStyle rectangle
+skinparam defaultFontName "Helvetica"
+
+title Arquitectura de Integración — Gimnasio Reservas con Apache Kafka
+
+actor "Usuario" as user
+
+package "Frontend" {
+  [Nginx\n(HTML/CSS/JS)] as front
+}
+
+package "Backend — gym-api (Spring Boot 4)" {
+  [REST Controllers\n/ OpenAPI] as api
+  [Application Services\n@Transactional] as services
+  [Domain Events\n(ReservaConfirmadaEvent)] as events
+  [@TransactionalEventListener\n(AFTER_COMMIT)] as listener
+  [KafkaProducerAdapter] as producer
+  [ReservaNotificationConsumer\n@RetryableTopic + @DltHandler] as consumer
+  [JavaMailNotificacionAdapter] as mail
+  [Kafka Streams\nReservasContadorTopology] as streams
+}
+
+package "Infraestructura de Mensajería (Docker)" {
+  database "PostgreSQL 16" as db
+  queue "Apache Kafka 7.7\n(KRaft)" as kafka
+  queue "Schema Registry\n(Confluent 7.7)" as registry
+  [Kafka UI\n(:8090)] as ui
+  [MailHog\n(SMTP :1025 / UI :8025)] as mailhog
+}
+
+package "Tópicos Kafka" {
+  queue "gym.reservas.eventos.v1\n(3 particiones, Avro)" as t_main
+  queue "gym.reservas.eventos.v1-retry-{0,1,2}" as t_retry
+  queue "gym.reservas.eventos.v1-dlt" as t_dlt
+  queue "gym.reservas.contador.v1" as t_cont
+}
+
+user --> front : HTTP :3000
+front --> api : /api/v1 (proxy)
+api --> services
+services --> events
+events --> listener : Spring Events (sync, misma tx)
+listener --> producer : AFTER_COMMIT
+producer --> t_main : Avro + schema ID
+producer --> registry : valida schema
+consumer <-- t_main : consume Avro
+consumer --> t_retry : si falla
+t_retry --> t_dlt : agota 3 retries
+consumer --> mail
+mail --> mailhog : SMTP
+services --> db : JPA
+streams <-- t_main : consume Avro
+streams --> t_cont : count(claseId)
+ui -.-> kafka : inspección
+ui -.-> registry
+
+note right of listener
+  Desacopla la capa de servicio
+  de la mensajería (Punto 6)
+end note
+
+note bottom of consumer
+  Error handling:
+  @RetryableTopic (4 attempts, backoff 2s/4s/8s)
+  @DltHandler (guarda metadata del fallo)
+end note
+
+note bottom of producer
+  Tolerancia producer:
+  acks=all, retries=3, idempotence=true
+  headers: eventType, publishedAt, correlationId
+end note
+
+@enduml
